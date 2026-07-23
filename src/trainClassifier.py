@@ -3,8 +3,8 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
 #Load embeddings
-X = np.load("../data/X.npy")
-y = np.load("../data/y.npy")
+X = np.load("../dataSet/X.npy")
+y = np.load("../dataSet/y.npy")
 
 print("X:", X.shape)
 print("y:", y.shape)
