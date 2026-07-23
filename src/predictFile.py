@@ -8,8 +8,8 @@ yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
 
 classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
 
-#audio_file = "../data/test/notSiren/bbc_alarm.wav"
-audio_file = "../data/test/siren/bbc_ambulance.wav"
+#audio_file = "../dataset/testData/notSiren/bbc_alarm.wav"
+audio_file = "../dataset/testData/siren/bbc_ambulance.wav"
 #Load audio
 waveform, sr = librosa.load(
     audio_file,
