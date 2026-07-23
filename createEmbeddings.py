@@ -12,7 +12,7 @@ X = [] #What the model learns from (Large nums)
 y = [] # he correct answer the model should learn to predict (1 or 0)
 
 # Sirens
-for wav_file in Path("../dataset/siren").glob("*.wav"):
+for wav_file in Path("../dataset/sirens").glob("*.wav"):
     waveform, sr = librosa.load(  #Sample Rate: Audio samples recorded per second
         wav_file,
         sr=16000, #YamNet automatically resamples the audio to16kHz
@@ -28,7 +28,7 @@ for wav_file in Path("../dataset/siren").glob("*.wav"):
         y.append(1) #1 for a siren
 
 # Non-sirens
-for wav_file in Path("../dataset/notSiren").glob("*.wav"):
+for wav_file in Path("../dataset/notSirens").glob("*.wav"):
     waveform, sr = librosa.load(
         wav_file,
         sr=16000,
