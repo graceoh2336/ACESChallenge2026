@@ -5,6 +5,7 @@ import tensorflow_hub as hub
 SAMPLE_RATE = 16000
 MIN_SAMPLES = int(0.98 * SAMPLE_RATE)  # YAMNet needs ~0.96s to make one embedding frame
 
+#To create embeddings (a vector of numbers describing the audio). Convert the audio in to machine learning features using YamNet
 yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
 
 
