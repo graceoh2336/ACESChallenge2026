@@ -11,9 +11,9 @@ file_id = 0
 
 # Sirens
 for wav_file in Path("../dataset/sirens").glob("*.wav"):
-    waveform, sr = load_waveform(wav_file)
+    waveform = load_waveform(wav_file)
     embeddings = get_embeddings(waveform)
-    for emb in embeddings.numpy():
+    for emb in embeddings:
         X.append(emb)
         y.append(1) #1 for a siren
         groups.append(file_id)
@@ -21,9 +21,9 @@ for wav_file in Path("../dataset/sirens").glob("*.wav"):
 
 # Non-sirens
 for wav_file in Path("../dataset/notSirens").glob("*.wav"):
-    waveform, sr = load_waveform(wav_file)
+    waveform = load_waveform(wav_file)
     embeddings = get_embeddings(waveform)
-    for emb in embeddings.numpy():
+    for emb in embeddings:
         X.append(emb)
         y.append(0) #0 for non-siren
         groups.append(file_id)
