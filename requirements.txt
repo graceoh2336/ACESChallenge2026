@@ -1,0 +1,6 @@
+numpy
+opencv-python
+picamera2
+
+#needed for the live_camera on the pi
+sudo apt install python3-picamera2
