@@ -1,21 +1,23 @@
 import numpy as np
 import tensorflow as tf
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 
 #Load embeddings
 X = np.load("../dataSet/X.npy")
 y = np.load("../dataSet/y.npy")
+groups = np.load("../data/groups.npy")
 
 print("X:", X.shape)
 print("y:", y.shape)
 
-#Split data
-X_train, X_test, y_train, y_test = train_test_split( # Split so they correlate, X[0]= siren therefore y[0]= 1
-    X,  y,
+#Split data by file
+splitter = GroupShuffleSplit(n_splits=1, #
     test_size=0.2, #Saves some to test model on
     random_state=42, #Makes the split reproducible (run it again & same train/test split.)
-    stratify=y #Keeps the same siren/non-siren ratio in both sets. E.g. 60% 40% in original, 60% 40% in both train and test
 )
+train_idx, test_idx = next(splitter.split(X, y, groups))
+X_train, X_test = X[train_idx], X[test_idx]
+y_train, y_test = y[train_idx], y[test_idx]
 
 #Define model, create neural network
 model = tf.keras.Sequential([
@@ -53,8 +55,15 @@ loss, accuracy, precision, recall = model.evaluate( #Tests the model on the unse
 
 print(f"\nTest Accuracy: {accuracy:.4f}")
 print("Precision:", precision)
-print("Recall   :", recall)
-
+print("Recall:", recall)
 
 #Save
 model.save("../models/siren_classifier.keras")
+
+# Convert to TFLite so it can run on the Raspberry Pi
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+tflite_model = converter.convert()
+with open("../models/siren_classifier.tflite", "wb") as f:
+    f.write(tflite_model)
+print("Saved siren_classifier.tflite")
