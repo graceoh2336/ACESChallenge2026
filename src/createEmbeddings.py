@@ -1,6 +1,6 @@
 import numpy as np
 from pathlib import Path
-from audio_utils import load_waveform, get_embeddings
+from audioUtils import load_waveform, get_embeddings
 
 #Create datasets
 X = [] #Embeddings: What the model learns from (Large nums)
