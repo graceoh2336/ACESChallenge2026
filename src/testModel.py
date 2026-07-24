@@ -7,7 +7,7 @@ from pathlib import Path
 yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
 
 #classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
-classifier = tf.keras.models.load_model("/home/gohallor/ACES/Code/YamNetTrial/models/siren_classifier.keras")
+classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
 
 for wav_file in Path("../data/test/siren").rglob("*.wav"):
 
