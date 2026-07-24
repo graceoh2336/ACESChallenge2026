@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from audio_utils import load_waveform, get_embeddings
+from audioUtils import load_waveform, get_embeddings
 
 # Load model
 classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
