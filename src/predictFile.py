@@ -1,28 +1,20 @@
-import librosa
 import numpy as np
 import tensorflow as tf
-import tensorflow_hub as hub
+from audio_utils import load_waveform, get_embeddings
 
-# Load models
-yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
-
+# Load model
 classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
 
 #audio_file = "../dataset/testData/notSiren/bbc_alarm.wav"
 audio_file = "../dataset/testData/siren/bbc_ambulance.wav"
+
 #Load audio
-waveform, sr = librosa.load(
-    audio_file,
-    sr=16000,
-    mono=True
-)
-
-_, embeddings, _ = yamnet(waveform)
-
-predictions = classifier.predict(embeddings.numpy(), verbose=0)
+waveform = load_waveform(audio_file)
+embeddings = get_embeddings(waveform)
+predictions = classifier.predict(embeddings, verbose=0)
 
 mean_probability = float(np.mean(predictions))
-max_probability = np.max(predictions)
+max_probability = float(np.max(predictions))
 
 print(f"{audio_file} -> {mean_probability:.4f}")
 print(f"{audio_file} -> {np.max(predictions):.4f}")
