@@ -10,9 +10,9 @@ from collections import deque
 # This script detects blue emergency-light candidates from video.
 #
 # Visual states:
-# - Blue object      = blue object, not trusted yet
-# - Possible flash   = amber candidate, worth tracking
-# - Emergency light  = red confirmed visual detection
+# - Blue object = blue object, not trusted yet
+# - Possible flash = amber candidate, worth tracking
+# - Emergency light = confirmed visual detection
 #
 # Audio boost idea:
 # - Visual detection always runs.
@@ -30,13 +30,17 @@ from collections import deque
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 #VIDEO_SOURCE = "emergency_light.mp4"
-# VIDEO_SOURCE = "emergency_light_2.mp4"
-# VIDEO_SOURCE = "night_emergency_lights.mp4"
-# VIDEO_SOURCE = "nolights.mp4"
+#VIDEO_SOURCE = "emergency_light_2.mp4"
+#VIDEO_SOURCE = "night_emergency_lights.mp4"
+#VIDEO_SOURCE = "nolights.mp4"
 #VIDEO_SOURCE = "city_lights.mp4"
-VIDEO_SOURCE = "lights.mp4"
+#VIDEO_SOURCE = "lights.mp4"
 #VIDEO_SOURCE = "sky.mp4"
-# VIDEO_SOURCE = "more_night.mp4"
+#VIDEO_SOURCE = "more_night.mp4"
+#VIDEO_SOURCE = "dash1.mp4"
+VIDEO_SOURCE = "oncoming.mp4"
+#VIDEO_SOURCE = "pass by.mp4"
+#VIDEO_SOURCE = "Garda Skoda Enyaq Siren Demo - Limerick Emergency Videos (1080p).mp4"
 
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
@@ -63,7 +67,7 @@ PRINT_EVERY_N_FRAMES = 1
 # Simulated audio input for now.
 # False = normal visual mode
 # True  = siren heard, visual becomes more sensitive
-AUDIO_SIREN_DETECTED = False
+AUDIO_SIREN_DETECTED = True
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -967,12 +971,37 @@ class VisualEmergencyDetector:
 
             is_reflection_like = reflection_penalty
 
+            # These stop sky, dashboard reflections, and edge noise
+            # from turning into POSSIBLE FLASH or EMERGENCY LIGHT.
+            vertical_position = (y + h / 2) / float(FRAME_HEIGHT)
+
+            # Useful road area. Still allows most road/lane/vehicle area,
+            # but reduces top sky and bottom dashboard false positives.
+            in_alert_zone = (
+                vertical_position > 0.22 and
+                vertical_position < 0.88
+            )
+
+            # Sky/background looking blobs high in the frame should not become alerts.
+            sky_false_positive = (
+                vertical_position < 0.45 and
+                background_score >= 0.45
+            )
+
+            # Very weak light sources should not become alerts.
+            weak_visual_candidate = (
+                light_source_quality < adaptive["min_source_quality_for_alert"]
+            )
+
             is_alert_candidate = (
                 track_confidence_normalised >= adaptive["detected_threshold"] and
                 confirmed_enough_for_alert and
                 source_good_enough and
                 not is_reflection_like and
-                background_score < 0.70
+                in_alert_zone and
+                not sky_false_positive and
+                not weak_visual_candidate and
+                background_score < 0.55
             )
 
             # Amber appears earlier if the object starts behaving flash-like.
@@ -984,7 +1013,9 @@ class VisualEmergencyDetector:
                 )
                 and source_good_enough
                 and not is_reflection_like
-                and background_score < 0.75
+                and in_alert_zone
+                and not sky_false_positive
+                and background_score < 0.65
             )
 
             if candidate_score > best_track_score:
