@@ -1,4 +1,4 @@
-import type { AlertLevel, HealthStatus } from '../types'
+import type { AlertLevel, ConnectionStatus, HealthStatus } from '../types'
 
 export function formatConfidence(value: number): string {
   return `${Math.round(value * 100)}%`
@@ -72,6 +72,27 @@ interface HealthStyle {
   label: string
   textClass: string
   dotClass: string
+}
+
+interface ConnectionStatusStyle {
+  label: string
+  textClass: string
+  dotClass: string
+}
+
+export function connectionStatusStyle(status: ConnectionStatus): ConnectionStatusStyle {
+  switch (status) {
+    case 'connected':
+      return { label: 'Connected', textClass: 'text-status-green', dotClass: 'bg-status-green' }
+    case 'connecting':
+      return { label: 'Connecting…', textClass: 'text-status-amber', dotClass: 'bg-status-amber' }
+    case 'reconnecting':
+      return { label: 'Reconnecting…', textClass: 'text-status-amber', dotClass: 'bg-status-amber' }
+    case 'error':
+      return { label: 'Connection Error', textClass: 'text-status-red', dotClass: 'bg-status-red' }
+    default:
+      return { label: 'Disconnected', textClass: 'text-status-red', dotClass: 'bg-status-red' }
+  }
 }
 
 export function healthStyle(status: HealthStatus): HealthStyle {

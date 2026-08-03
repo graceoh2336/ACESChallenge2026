@@ -1,10 +1,14 @@
 import type { ComponentType } from 'react'
-import { Gauge, Cpu, Signal, FlaskConical, Tag } from 'lucide-react'
-import type { DriveMode } from '../../types'
+import { Gauge, Cpu, Signal, FlaskConical, Radio, Tag, Clock } from 'lucide-react'
+import type { ConnectionStatus, DriveMode } from '../../types'
+import { connectionStatusStyle, formatClock } from '../../utils/formatters'
 
 interface BottomStatusBarProps {
   driveMode: DriveMode
   version: string
+  connectionStatus: ConnectionStatus
+  isMock: boolean
+  lastMessageAt: Date | null
 }
 
 interface StatusItem {
@@ -14,12 +18,30 @@ interface StatusItem {
   valueClass?: string
 }
 
-export function BottomStatusBar({ driveMode, version }: BottomStatusBarProps) {
+export function BottomStatusBar({ driveMode, version, connectionStatus, isMock, lastMessageAt }: BottomStatusBarProps) {
+  const connection = connectionStatusStyle(connectionStatus)
+  const aiActive = connectionStatus === 'connected'
+
   const items: StatusItem[] = [
     { icon: Gauge, label: 'Drive Mode', value: driveMode },
-    { icon: Cpu, label: 'AI Status', value: 'Active', valueClass: 'text-status-green' },
-    { icon: Signal, label: 'Connection', value: 'Stable', valueClass: 'text-status-green' },
-    { icon: FlaskConical, label: 'Simulation', value: 'Mock Data', valueClass: 'text-status-amber' },
+    {
+      icon: Cpu,
+      label: 'AI Status',
+      value: aiActive ? 'Active' : 'Standby',
+      valueClass: aiActive ? 'text-status-green' : 'text-status-amber',
+    },
+    { icon: Signal, label: 'Connection', value: connection.label, valueClass: connection.textClass },
+    {
+      icon: isMock ? FlaskConical : Radio,
+      label: 'Data Source',
+      value: isMock ? 'Mock Data' : 'Live WebSocket',
+      valueClass: isMock ? 'text-status-amber' : 'text-status-green',
+    },
+    {
+      icon: Clock,
+      label: 'Last Update',
+      value: lastMessageAt ? formatClock(lastMessageAt) : '—',
+    },
     { icon: Tag, label: 'Version', value: version },
   ]
 

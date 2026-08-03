@@ -1,15 +1,25 @@
 import type { ReactNode } from 'react'
 import { TopStatusBar } from './TopStatusBar'
 import { BottomStatusBar } from './BottomStatusBar'
-import type { DriveMode } from '../../types'
+import type { ConnectionStatus, DriveMode } from '../../types'
 
 interface DashboardLayoutProps {
   children: ReactNode
   driveMode: DriveMode
   version: string
+  connectionStatus: ConnectionStatus
+  isMock: boolean
+  lastMessageAt: Date | null
 }
 
-export function DashboardLayout({ children, driveMode, version }: DashboardLayoutProps) {
+export function DashboardLayout({
+  children,
+  driveMode,
+  version,
+  connectionStatus,
+  isMock,
+  lastMessageAt,
+}: DashboardLayoutProps) {
   return (
     <div className="grid-overlay relative min-h-screen bg-cockpit-950 p-3 sm:p-4">
       <div
@@ -23,7 +33,13 @@ export function DashboardLayout({ children, driveMode, version }: DashboardLayou
       <div className="relative mx-auto flex max-w-[1800px] flex-col gap-3 sm:gap-4">
         <TopStatusBar />
         <main>{children}</main>
-        <BottomStatusBar driveMode={driveMode} version={version} />
+        <BottomStatusBar
+          driveMode={driveMode}
+          version={version}
+          connectionStatus={connectionStatus}
+          isMock={isMock}
+          lastMessageAt={lastMessageAt}
+        />
       </div>
     </div>
   )

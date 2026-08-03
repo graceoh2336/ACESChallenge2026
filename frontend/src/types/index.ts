@@ -18,6 +18,8 @@ export type HealthStatus = 'online' | 'degraded' | 'offline'
 
 export type DriveMode = 'Comfort' | 'Eco' | 'Sport' | 'Off-Road'
 
+export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'
+
 export interface DetectionState {
   audioDetected: boolean
   audioConfidence: number
