@@ -103,9 +103,11 @@ class DetectionBroadcaster:
 
 manager = ConnectionManager()
 
+camera_service = CameraDetectionService(settings.camera_detection_probability)
+
 fusion_service = FusionService(
     audio_service=AudioDetectionService(settings.audio_detection_probability),
-    camera_service=CameraDetectionService(settings.camera_detection_probability),
+    camera_service=camera_service,
 )
 
 broadcaster = DetectionBroadcaster(

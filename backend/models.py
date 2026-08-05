@@ -46,13 +46,23 @@ class AudioReading(BaseModel):
     sirenType: SirenType
 
 
+class BoundingBox(BaseModel):
+    """Pixel-space box in the camera detector's working frame (640x480)."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class CameraReading(BaseModel):
-    """Raw output of the (simulated) camera vehicle-detection service."""
+    """Raw output of the camera vehicle-detection service."""
 
     cameraDetected: bool
     vehicleConfidence: float = Field(ge=0.0, le=1.0)
     vehicleType: VehicleType
     direction: Optional[Direction] = None
+    boundingBox: Optional[BoundingBox] = None
 
 
 class DetectionEvent(BaseModel):
@@ -65,5 +75,6 @@ class DetectionEvent(BaseModel):
     vehicleConfidence: float = Field(ge=0.0, le=1.0)
     vehicleType: VehicleType
     direction: Optional[Direction] = None
+    boundingBox: Optional[BoundingBox] = None
     alertLevel: AlertLevel
     timestamp: str

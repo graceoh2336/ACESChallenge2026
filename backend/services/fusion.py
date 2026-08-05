@@ -45,6 +45,7 @@ class FusionService:
             vehicleConfidence=camera.vehicleConfidence,
             vehicleType=camera.vehicleType,
             direction=camera.direction,
+            boundingBox=camera.boundingBox,
             alertLevel=alert_level,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )

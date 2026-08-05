@@ -17,9 +17,16 @@ class Settings:
     # How often (seconds) the simulated detection pipeline emits a new event.
     broadcast_interval_seconds: float = float(os.getenv("BROADCAST_INTERVAL_SECONDS", "1.0"))
 
-    # Probability that a given simulated tick detects a siren / vehicle.
+    # Probability that a given simulated tick detects a siren.
     audio_detection_probability: float = float(os.getenv("AUDIO_DETECTION_PROBABILITY", "0.55"))
+
+    # Unused by the real OpenCV camera service; kept so CameraDetectionService's
+    # constructor signature (and websocket.py's call site) don't need to change.
     camera_detection_probability: float = float(os.getenv("CAMERA_DETECTION_PROBABILITY", "0.5"))
+
+    # "0" (or another integer) for a live webcam index, or a video file path
+    # (e.g. "demo.mp4") to loop a recorded clip through the detector.
+    camera_source: str = os.getenv("CAMERA_SOURCE", "0")
 
     cors_origins: List[str] = field(
         default_factory=lambda: _parse_origins(
