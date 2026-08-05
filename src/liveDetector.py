@@ -44,6 +44,8 @@ while True:
 
     if max_probability > THRESHOLD:
         consecutive_hits += 1
+    else:
+        consecutive_hits = 0
 
     if consecutive_hits >= HITS_NEEDED:
         print("SIREN DETECTED")
