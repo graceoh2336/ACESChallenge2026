@@ -63,6 +63,10 @@ class CameraReading(BaseModel):
     vehicleType: VehicleType
     direction: Optional[Direction] = None
     boundingBox: Optional[BoundingBox] = None
+    # Pixel dimensions of the frame boundingBox's coordinates are expressed
+    # in, so consumers can convert to percentages of their own render size.
+    frameWidth: Optional[int] = None
+    frameHeight: Optional[int] = None
 
 
 class DetectionEvent(BaseModel):
@@ -76,5 +80,7 @@ class DetectionEvent(BaseModel):
     vehicleType: VehicleType
     direction: Optional[Direction] = None
     boundingBox: Optional[BoundingBox] = None
+    frameWidth: Optional[int] = None
+    frameHeight: Optional[int] = None
     alertLevel: AlertLevel
     timestamp: str

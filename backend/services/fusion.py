@@ -46,6 +46,8 @@ class FusionService:
             vehicleType=camera.vehicleType,
             direction=camera.direction,
             boundingBox=camera.boundingBox,
+            frameWidth=camera.frameWidth,
+            frameHeight=camera.frameHeight,
             alertLevel=alert_level,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )

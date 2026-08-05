@@ -16,7 +16,6 @@ A background thread is required rather than reading frames inline inside
 """
 
 import logging
-import os
 import sys
 import threading
 import time
@@ -28,6 +27,8 @@ import cv2
 # lights.py lives at the repo root and stays there, unmodified — the
 # detector algorithm must not be rewritten, only imported and adapted.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
@@ -53,10 +54,18 @@ _POSITION_TO_DIRECTION = {
     "right": Direction.FRONT_RIGHT,
 }
 
+_DEMO_DIR = _BACKEND_DIR / "demo"
+_DEMO_VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".webm")
+
 
 def _resolve_camera_source() -> "int | str":
-    """CAMERA_SOURCE=0 -> webcam index 0. CAMERA_SOURCE=demo.mp4 -> a video
-    file, resolved against the repo root if a same-named file lives there."""
+    """CAMERA_SOURCE=0 -> webcam index 0. A non-numeric value is a video file
+    path — CAMERA_SOURCE=backend/demo/x.mp4 and CAMERA_SOURCE=demo/x.mp4 both
+    resolve, checked against the repo root and the backend/ directory so it
+    works regardless of which one the process was launched from. Absolute
+    paths, and anything that doesn't match either, are passed straight to
+    cv2.VideoCapture (relative to the process's own cwd) unchanged.
+    """
     raw = settings.camera_source.strip()
 
     if raw.isdigit():
@@ -64,11 +73,25 @@ def _resolve_camera_source() -> "int | str":
 
     candidate = Path(raw)
     if not candidate.is_absolute():
-        repo_candidate = _REPO_ROOT / raw
-        if repo_candidate.exists():
-            return str(repo_candidate)
+        for base in (_REPO_ROOT, _BACKEND_DIR):
+            resolved = base / raw
+            if resolved.exists():
+                return str(resolved)
 
     return raw
+
+
+def _find_demo_video() -> Optional[Path]:
+    """First video file found in backend/demo/, if any (sorted for determinism)."""
+    if not _DEMO_DIR.is_dir():
+        return None
+
+    candidates = sorted(
+        path
+        for path in _DEMO_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() in _DEMO_VIDEO_EXTENSIONS
+    )
+    return candidates[0] if candidates else None
 
 
 class CameraDetectionService:
@@ -91,6 +114,8 @@ class CameraDetectionService:
             vehicleType=VehicleType.UNKNOWN,
             direction=None,
             boundingBox=None,
+            frameWidth=lights.FRAME_WIDTH,
+            frameHeight=lights.FRAME_HEIGHT,
         )
 
         self._lock = threading.Lock()
@@ -98,22 +123,77 @@ class CameraDetectionService:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        """Opens the VideoCapture once and starts the continuous frame loop."""
+        """Opens the VideoCapture once and starts the continuous frame loop.
+
+        Never raises: a camera that can't be opened (or any other startup
+        failure) leaves the service running with no live detections rather
+        than taking down the FastAPI process it's part of.
+        """
         if self._thread is not None:
             return
 
-        self._capture = cv2.VideoCapture(self._source)
-        if not self._capture.isOpened():
-            logger.error("Could not open camera source: %r", self._source)
-            self._capture = None
+        try:
+            capture = self._open_working_capture()
+        except Exception:
+            logger.exception("Unexpected error starting camera detection; continuing without it")
             return
 
+        if capture is None:
+            logger.warning(
+                "Camera detection disabled — no working video source. "
+                "The API keeps running; cameraDetected will stay false."
+            )
+            return
+
+        self._capture = capture
         self._stop_event.clear()
         self._thread = threading.Thread(
             target=self._run, name="camera-detection-loop", daemon=True
         )
         self._thread.start()
         logger.info("Camera detection loop started (source=%r)", self._source)
+
+    def _open_working_capture(self) -> Optional[cv2.VideoCapture]:
+        """Tries the configured source, then falls back to a demo video."""
+        capture = self._try_open(self._source)
+        if capture is not None:
+            return capture
+
+        logger.warning("Configured camera source %r could not be opened.", self._source)
+
+        demo_video = _find_demo_video()
+        if demo_video is None:
+            logger.warning(
+                "No demo video found in %s to fall back to.", _DEMO_DIR
+            )
+            return None
+
+        if not settings.camera_auto_fallback:
+            logger.warning(
+                "A demo video is available at %s — set CAMERA_SOURCE=%s to use it "
+                "directly, or CAMERA_AUTO_FALLBACK=true to switch to it automatically "
+                "whenever the configured source fails.",
+                demo_video,
+                demo_video.relative_to(_REPO_ROOT),
+            )
+            return None
+
+        logger.warning("CAMERA_AUTO_FALLBACK is enabled — switching to demo video: %s", demo_video)
+        capture = self._try_open(str(demo_video))
+        if capture is None:
+            logger.warning("Demo video %s could not be opened either.", demo_video)
+            return None
+
+        self._source = str(demo_video)
+        return capture
+
+    @staticmethod
+    def _try_open(source: "int | str") -> Optional[cv2.VideoCapture]:
+        capture = cv2.VideoCapture(source)
+        if not capture.isOpened():
+            capture.release()
+            return None
+        return capture
 
     def stop(self) -> None:
         """Stops the frame loop and cleanly releases the camera."""
@@ -174,4 +254,6 @@ class CameraDetectionService:
             vehicleType=VehicleType.UNKNOWN,
             direction=direction,
             boundingBox=bounding_box,
+            frameWidth=lights.FRAME_WIDTH,
+            frameHeight=lights.FRAME_HEIGHT,
         )

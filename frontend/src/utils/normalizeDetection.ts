@@ -70,10 +70,11 @@ function normalizeAlertLevel(value: unknown): AlertLevel {
   return typeof value === 'string' && value in ALERT_LEVEL_MAP ? ALERT_LEVEL_MAP[value] : 'Monitoring'
 }
 
-// The backend doesn't emit real vision-model coordinates yet (no camera
-// bounding-box field exists on DetectionEvent at all), so a plausible box is
-// derived from direction + confidence purely to keep the camera overlay
-// working with live data instead of going blank.
+// Fallback only: used when the backend event carries no real boundingBox
+// (older events, or a state where the detector hasn't tracked anything yet)
+// or is missing the source frame dimensions needed to convert one. Derives
+// a plausible box from direction + confidence purely to keep the camera
+// overlay working instead of going blank.
 const DIRECTION_BOX_ORIGIN: Record<Direction, { x: number; y: number }> = {
   Front: { x: 40, y: 30 },
   'Front Left': { x: 15, y: 32 },
@@ -94,6 +95,51 @@ function deriveBoundingBox(
   const origin = DIRECTION_BOX_ORIGIN[direction]
   const size = 24 + vehicleConfidence * 16
   return { x: origin.x, y: origin.y, width: size, height: size * 1.1 }
+}
+
+interface PixelBoundingBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+/** Parses the raw (pixel-space) boundingBox the backend attaches to a camera reading. */
+function parsePixelBoundingBox(value: unknown): PixelBoundingBox | null {
+  if (!isRecord(value)) return null
+  const { x, y, width, height } = value
+  if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(width) || !isFiniteNumber(height)) {
+    return null
+  }
+  return { x, y, width, height }
+}
+
+/** A positive frame dimension, or null — used to gate pixel->percent conversion. */
+function parseFrameDimension(value: unknown): number | null {
+  return isFiniteNumber(value) && value > 0 ? value : null
+}
+
+/**
+ * Converts a pixel-space box (in the detector's source frame) into the
+ * percentage-space BoundingBox the overlay renders with. Percentages scale
+ * automatically with the camera panel's own size/aspect ratio via CSS, so no
+ * resize handling is needed beyond this one conversion. All values are
+ * clamped so the box can never render outside the panel bounds.
+ */
+function pixelBoxToPercentage(box: PixelBoundingBox, frameWidth: number, frameHeight: number): BoundingBox {
+  const x = clamp((box.x / frameWidth) * 100, 0, 100)
+  const y = clamp((box.y / frameHeight) * 100, 0, 100)
+  const width = clamp((box.width / frameWidth) * 100, 0, 100 - x)
+  const height = clamp((box.height / frameHeight) * 100, 0, 100 - y)
+  return { x, y, width, height }
 }
 
 /**
@@ -119,6 +165,18 @@ export function normalizeDetectionEvent(raw: unknown): DetectionState | null {
 
   const direction = normalizeDirection(raw.direction)
 
+  const pixelBoundingBox = parsePixelBoundingBox(raw.boundingBox)
+  const frameWidth = parseFrameDimension(raw.frameWidth)
+  const frameHeight = parseFrameDimension(raw.frameHeight)
+
+  // Prefer the real detector box whenever the backend sent one with frame
+  // dimensions to convert against; only fall back to the derived placeholder
+  // for older events (no boundingBox/frame fields yet) or mock data.
+  const boundingBox =
+    pixelBoundingBox && frameWidth && frameHeight
+      ? pixelBoxToPercentage(pixelBoundingBox, frameWidth, frameHeight)
+      : deriveBoundingBox(cameraDetected, direction, vehicleConfidence)
+
   return {
     audioDetected,
     audioConfidence,
@@ -128,7 +186,7 @@ export function normalizeDetectionEvent(raw: unknown): DetectionState | null {
     vehicleType: normalizeVehicleType(raw.vehicleType),
     direction,
     alertLevel: normalizeAlertLevel(raw.alertLevel),
-    boundingBox: deriveBoundingBox(cameraDetected, direction, vehicleConfidence),
+    boundingBox,
   }
 }
 

@@ -28,6 +28,16 @@ class Settings:
     # (e.g. "demo.mp4") to loop a recorded clip through the detector.
     camera_source: str = os.getenv("CAMERA_SOURCE", "0")
 
+    # When the configured camera_source can't be opened and a demo video
+    # exists under backend/demo/, automatically switch to it instead of just
+    # logging that it's available. Off by default — falling back to a demo
+    # clip silently is a surprising thing for a "live" feed to do.
+    camera_auto_fallback: bool = os.getenv("CAMERA_AUTO_FALLBACK", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
     cors_origins: List[str] = field(
         default_factory=lambda: _parse_origins(
             os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
