@@ -1,0 +1,161 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Rajdhani', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Cockpit surface palette */
+  --color-cockpit-950: #05060a;
+  --color-cockpit-900: #0a0c12;
+  --color-cockpit-850: #0e111a;
+  --color-cockpit-800: #12151f;
+  --color-cockpit-700: #1a1e2b;
+  --color-cockpit-600: #262b3b;
+  --color-cockpit-500: #384156;
+  --color-cockpit-400: #565f78;
+  --color-cockpit-300: #7b849c;
+  --color-cockpit-200: #a9b1c4;
+  --color-cockpit-100: #d8dce6;
+
+  /* Monitoring / status */
+  --color-status-green: #22e396;
+  --color-status-green-dim: #0f5c42;
+  --color-status-amber: #ffb020;
+  --color-status-amber-dim: #7a5410;
+  --color-status-red: #ff3b4e;
+  --color-status-red-dim: #7a1420;
+  --color-status-blue: #3ba7ff;
+
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  --animate-scan: scan 3.2s linear infinite;
+  --animate-radar-sweep: radar-sweep 4s linear infinite;
+  --animate-pulse-ring: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-blink: blink 1.4s ease-in-out infinite;
+  --animate-marquee: marquee 14s linear infinite;
+
+  @keyframes scan {
+    0% {
+      transform: translateY(-100%);
+    }
+    100% {
+      transform: translateY(100%);
+    }
+  }
+  @keyframes radar-sweep {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.7);
+      opacity: 0.9;
+    }
+    100% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @keyframes marquee {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-cockpit-950);
+  color: var(--color-cockpit-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-status-green) 30%, transparent);
+}
+
+/* Slim, unobtrusive scrollbars for the in-cockpit panels */
+.cockpit-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-cockpit-500) transparent;
+}
+.cockpit-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.cockpit-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cockpit-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-cockpit-500);
+  border-radius: 999px;
+}
+
+.glass-panel {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-cockpit-800) 92%, transparent) 0%,
+    color-mix(in srgb, var(--color-cockpit-900) 96%, transparent) 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in srgb, var(--color-cockpit-400) 18%, transparent);
+  box-shadow: var(--shadow-glass);
+}
+
+.text-glow-green {
+  text-shadow: 0 0 12px color-mix(in srgb, var(--color-status-green) 55%, transparent);
+}
+.text-glow-amber {
+  text-shadow: 0 0 12px color-mix(in srgb, var(--color-status-amber) 55%, transparent);
+}
+.text-glow-red {
+  text-shadow: 0 0 14px color-mix(in srgb, var(--color-status-red) 65%, transparent);
+}
+
+.grid-overlay {
+  background-image: linear-gradient(
+      color-mix(in srgb, var(--color-cockpit-100) 5%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-cockpit-100) 5%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 28px 28px;
+}
