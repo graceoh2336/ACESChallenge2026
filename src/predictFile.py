@@ -3,7 +3,7 @@ import tensorflow as tf
 from audioUtils import load_waveform, get_embeddings
 
 # Load model
-classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
+classifier = tf.keras.models.load_model(Path(__file__).resolve().parent.parent / "models" / "siren_classifier.keras")
 
 #audio_file = "../dataset/testData/notSiren/bbc_alarm.wav"
 audio_file = "../dataset/testData/siren/bbc_ambulance.wav"
