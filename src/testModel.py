@@ -3,7 +3,7 @@ import tensorflow as tf
 from pathlib import Path
 from audioUtils import load_waveform, get_embeddings
 
-classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
+classifier = tf.keras.models.load_model(Path(__file__).resolve().parent.parent / "models" / "siren_classifier.keras")
 
 for wav_file in Path("../dataset/testData/siren").rglob("*.wav"):
     
