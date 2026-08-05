@@ -53,6 +53,8 @@ interface DashboardPanelsProps {
   lastMessageAt: Date | null
   error: string | null
   version: string
+  /** Raw (pre-normalization) WebSocket payload, for DevCameraReadout only. Null in mock mode. */
+  rawMessage: unknown
 }
 
 function DashboardPanels({
@@ -63,6 +65,7 @@ function DashboardPanels({
   lastMessageAt,
   error,
   version,
+  rawMessage,
 }: DashboardPanelsProps) {
   return (
     <DashboardLayout
@@ -75,7 +78,7 @@ function DashboardPanels({
       <div className="flex flex-col gap-3 sm:gap-4">
         <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3">
           <div className="h-[420px] lg:col-span-2 lg:h-[480px]">
-            <CameraPanel detection={state} />
+            <CameraPanel detection={state} isMock={isMock} rawMessage={rawMessage} />
           </div>
           <div className="h-[480px] lg:col-span-1">
             <EmergencyPanel detection={state} />
@@ -118,12 +121,13 @@ function MockDashboardPage() {
       lastMessageAt={lastUpdated}
       error={null}
       version="v0.2.0-sim"
+      rawMessage={null}
     />
   )
 }
 
 function LiveDashboardPage() {
-  const { detection, connectionStatus, lastMessageAt, error } = useDetectionWebSocket()
+  const { detection, rawMessage, connectionStatus, lastMessageAt, error } = useDetectionWebSocket()
   const history = useLiveDetectionHistory(detection, lastMessageAt)
 
   return (
@@ -135,6 +139,7 @@ function LiveDashboardPage() {
       lastMessageAt={lastMessageAt}
       error={error}
       version="v0.2.0-live"
+      rawMessage={rawMessage}
     />
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ConnectionStatus, DetectionState } from '../types'
-import { parseDetectionMessage } from '../utils/normalizeDetection'
+import { normalizeDetectionEvent } from '../utils/normalizeDetection'
 
 // Fallback only — the real URL should come from VITE_DETECTION_WS_URL.
 const DEFAULT_WS_URL = 'ws://localhost:8000/ws/detection'
@@ -10,6 +10,8 @@ const MAX_RECONNECT_DELAY_MS = 30000
 
 export interface UseDetectionWebSocketResult {
   detection: DetectionState | null
+  /** Raw (pre-normalization) parsed payload of the last message — dev-tool use only. */
+  rawMessage: unknown
   connectionStatus: ConnectionStatus
   lastMessageAt: Date | null
   error: string | null
@@ -25,6 +27,7 @@ export function useDetectionWebSocket(url?: string): UseDetectionWebSocketResult
   const resolvedUrl = url ?? import.meta.env.VITE_DETECTION_WS_URL ?? DEFAULT_WS_URL
 
   const [detection, setDetection] = useState<DetectionState | null>(null)
+  const [rawMessage, setRawMessage] = useState<unknown>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting')
   const [lastMessageAt, setLastMessageAt] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -93,13 +96,22 @@ export function useDetectionWebSocket(url?: string): UseDetectionWebSocketResult
         if (socketRef.current !== socket) return
         if (typeof event.data !== 'string') return
 
-        const normalized = parseDetectionMessage(event.data)
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(event.data)
+        } catch {
+          setError('Received malformed detection event')
+          return
+        }
+
+        const normalized = normalizeDetectionEvent(parsed)
         if (normalized === null) {
           setError('Received malformed detection event')
           return
         }
 
         setDetection(normalized)
+        setRawMessage(parsed)
         setLastMessageAt(new Date())
         setError(null)
       }
@@ -136,5 +148,5 @@ export function useDetectionWebSocket(url?: string): UseDetectionWebSocketResult
     }
   }, [resolvedUrl])
 
-  return { detection, connectionStatus, lastMessageAt, error }
+  return { detection, rawMessage, connectionStatus, lastMessageAt, error }
 }

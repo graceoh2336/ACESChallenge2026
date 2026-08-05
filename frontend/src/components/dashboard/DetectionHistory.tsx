@@ -1,7 +1,7 @@
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import { History, Ambulance, Truck, ShieldQuestion } from 'lucide-react'
 import { PanelHeader } from './PanelHeader'
-import { alertLevelStyle, formatConfidence, formatHistoryTimestamp } from '../../utils/formatters'
+import { alertLevelStyle, formatConfidence, formatHistoryTimestamp, formatVehicleLabel } from '../../utils/formatters'
 import type { DetectionHistoryEntry, VehicleType } from '../../types'
 
 interface DetectionHistoryProps {
@@ -78,7 +78,11 @@ export function DetectionHistory({ entries }: DetectionHistoryProps) {
                 </span>
                 <div className="leading-tight">
                   <p className="text-sm font-medium text-cockpit-100">
-                    {entry.vehicleType} <span className="text-cockpit-400">· {entry.direction}</span>
+                    {/* Every history entry was created from an active alert
+                        (see useLiveDetectionHistory's Monitoring guard), so a
+                        detection is always active here. */}
+                    {formatVehicleLabel(entry.vehicleType, true)}{' '}
+                    <span className="text-cockpit-400">· {entry.direction}</span>
                   </p>
                   <p className="font-mono text-[11px] text-cockpit-400">
                     {formatHistoryTimestamp(entry.timestamp)}

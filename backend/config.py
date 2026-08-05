@@ -1,12 +1,25 @@
-"""Application configuration, sourced from environment variables with sane defaults."""
+"""Application configuration, sourced from environment variables (optionally
+via a backend/.env file) with sane defaults."""
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List
+
+from dotenv import load_dotenv
+
+# Loads backend/.env if it exists. Real environment variables set in the
+# shell/process still win over anything in the file (load_dotenv's default
+# override=False), so `CAMERA_SOURCE=0 uvicorn ...` still works as before.
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
 def _parse_origins(raw: str) -> List[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def _parse_bool(raw: str) -> bool:
+    return raw.strip().lower() in ("1", "true", "yes")
 
 
 @dataclass(frozen=True)
@@ -32,11 +45,14 @@ class Settings:
     # exists under backend/demo/, automatically switch to it instead of just
     # logging that it's available. Off by default — falling back to a demo
     # clip silently is a surprising thing for a "live" feed to do.
-    camera_auto_fallback: bool = os.getenv("CAMERA_AUTO_FALLBACK", "false").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    camera_auto_fallback: bool = _parse_bool(os.getenv("CAMERA_AUTO_FALLBACK", "false"))
+
+    # Verbose per-frame detection logging, saved debug frames under
+    # backend/debug_output/, and the /api/camera/debug-stream endpoint (raw
+    # frame + detector display + blue mask + change mask). Off by default —
+    # meaningful CPU/disk cost, and only useful while investigating detector
+    # accuracy, not for normal operation.
+    opencv_debug: bool = _parse_bool(os.getenv("OPENCV_DEBUG", "false"))
 
     cors_origins: List[str] = field(
         default_factory=lambda: _parse_origins(

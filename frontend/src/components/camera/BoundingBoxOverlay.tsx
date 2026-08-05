@@ -1,14 +1,15 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import type { BoundingBox, VehicleType } from '../../types'
-import { formatConfidence } from '../../utils/formatters'
+import { formatConfidence, formatVehicleLabel } from '../../utils/formatters'
 
 interface BoundingBoxOverlayProps {
   box: BoundingBox | null
   vehicleType: VehicleType
   confidence: number
+  cameraDetected: boolean
 }
 
-export function BoundingBoxOverlay({ box, vehicleType, confidence }: BoundingBoxOverlayProps) {
+export function BoundingBoxOverlay({ box, vehicleType, confidence, cameraDetected }: BoundingBoxOverlayProps) {
   return (
     <AnimatePresence>
       {box && (
@@ -32,7 +33,7 @@ export function BoundingBoxOverlay({ box, vehicleType, confidence }: BoundingBox
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 border-b-2 border-r-2 border-status-red" />
 
           <div className="absolute -top-7 left-0 flex items-center gap-1.5 rounded-md bg-status-red px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-cockpit-950 whitespace-nowrap">
-            {vehicleType}
+            {formatVehicleLabel(vehicleType, cameraDetected)}
             <span className="font-mono opacity-80">{formatConfidence(confidence)}</span>
           </div>
         </motion.div>

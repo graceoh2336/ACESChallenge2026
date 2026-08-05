@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
+import { formatVehicleLabel } from '../../utils/formatters'
 import type { Direction, VehicleType } from '../../types'
 
 interface WarningBannerProps {
@@ -42,7 +43,10 @@ export function WarningBanner({ show, vehicleType, direction }: WarningBannerPro
                 Emergency Vehicle Confirmed
               </p>
               <p className="text-xs text-cockpit-200">
-                {vehicleType} approaching from <span className="font-semibold">{direction}</span> — yield right of way
+                {/* Only ever shown when isConfirmed (both sensors agree), so
+                    a detection is guaranteed to be active here. */}
+                {formatVehicleLabel(vehicleType, true)} approaching from{' '}
+                <span className="font-semibold">{direction}</span> — yield right of way
               </p>
             </div>
           </motion.div>

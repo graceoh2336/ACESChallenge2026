@@ -1,7 +1,21 @@
-import type { AlertLevel, ConnectionStatus, HealthStatus } from '../types'
+import type { AlertLevel, ConnectionStatus, HealthStatus, VehicleType } from '../types'
 
 export function formatConfidence(value: number): string {
   return `${Math.round(value * 100)}%`
+}
+
+/**
+ * Vehicle-type label for display. The camera detector (OpenCV) can only
+ * confirm that a flashing light is present, never which kind of emergency
+ * vehicle it belongs to — that classification is future TensorFlow-model
+ * territory (see backend/services/camera.py) — so it always reports "None"
+ * for vehicleType. Showing that bare "None" while a detection is actually
+ * active reads as "nothing is happening"; this reframes it honestly instead
+ * of claiming a vehicle type OpenCV never determined.
+ */
+export function formatVehicleLabel(vehicleType: VehicleType, hasDetection: boolean): string {
+  if (!hasDetection) return 'No Vehicle Detected'
+  return vehicleType === 'None' ? 'Emergency Lights' : vehicleType
 }
 
 export function formatClock(date: Date): string {

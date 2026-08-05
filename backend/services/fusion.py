@@ -13,9 +13,6 @@ from models import AlertLevel, DetectionEvent
 from services.audio import AudioDetectionService
 from services.camera import CameraDetectionService
 
-_HIGH_CONFIDENCE_THRESHOLD = 0.85
-_MODERATE_CONFIDENCE_THRESHOLD = 0.75
-
 
 class FusionService:
     def __init__(
@@ -32,9 +29,7 @@ class FusionService:
 
         alert_level = self._determine_alert_level(
             audio_detected=audio.audioDetected,
-            audio_confidence=audio.audioConfidence,
             camera_detected=camera.cameraDetected,
-            vehicle_confidence=camera.vehicleConfidence,
         )
 
         return DetectionEvent(
@@ -53,19 +48,16 @@ class FusionService:
         )
 
     @staticmethod
-    def _determine_alert_level(
-        audio_detected: bool,
-        audio_confidence: float,
-        camera_detected: bool,
-        vehicle_confidence: float,
-    ) -> AlertLevel:
+    def _determine_alert_level(audio_detected: bool, camera_detected: bool) -> AlertLevel:
+        # Presence-only policy: exactly one sensor firing is "possible"
+        # (AlertLevel.INFO, frontend label "Possible Emergency Vehicle"),
+        # both firing together is "confirmed" (AlertLevel.WARNING, frontend
+        # label "Emergency Vehicle Confirmed"). No confidence-based upgrade
+        # to CRITICAL — a single fused "Confirmed" tier is what's wanted.
         if audio_detected and camera_detected:
-            if audio_confidence >= _HIGH_CONFIDENCE_THRESHOLD and vehicle_confidence >= _HIGH_CONFIDENCE_THRESHOLD:
-                return AlertLevel.CRITICAL
             return AlertLevel.WARNING
 
         if audio_detected or camera_detected:
-            confidence = audio_confidence if audio_detected else vehicle_confidence
-            return AlertLevel.WARNING if confidence >= _MODERATE_CONFIDENCE_THRESHOLD else AlertLevel.INFO
+            return AlertLevel.INFO
 
         return AlertLevel.NONE
