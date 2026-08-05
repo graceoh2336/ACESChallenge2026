@@ -10,8 +10,7 @@ THRESHOLD = 0.90
 HITS_NEEDED = 3
 
 print("Loading classifier...")
-MODEL_PATH = (Path(__file__).resolve().parent.parent/ "models"/ "siren_classifier.keras")
-classifier = tf.keras.models.load_model(MODEL_PATH)
+classifier = tf.keras.models.load_model(Path(__file__).resolve().parent.parent / "models" / "siren_classifier.keras")
 
 window_samples = int(WINDOW_SECONDS * SAMPLE_RATE)
 hop_samples = int(HOP_SECONDS * SAMPLE_RATE)
@@ -19,7 +18,7 @@ buffer = np.zeros(window_samples, dtype="float32")
  
 consecutive_hits = 0
 
-print("Listening... Press Ctrl+C to stop.")
+print("Listening. Press Ctrl+C to stop.")
 
 while True:
     print("Recording...")
