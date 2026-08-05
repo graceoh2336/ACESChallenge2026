@@ -1,26 +1,17 @@
-import librosa
 import numpy as np
 import tensorflow as tf
-import tensorflow_hub as hub
 from pathlib import Path
+from audioUtils import load_waveform, get_embeddings
 
-yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
-
-#classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
 classifier = tf.keras.models.load_model("../models/siren_classifier.keras")
 
 for wav_file in Path("../dataset/testData/siren").rglob("*.wav"):
-
-    waveform, sr = librosa.load(
-        wav_file,
-        sr=16000,
-        mono=True
-    )
-
-    _, embeddings, _ = yamnet(waveform)
+    
+    waveform = load_waveform(wav_file)
+    embeddings = get_embeddings(waveform)
 
     predictions = classifier.predict(
-        embeddings.numpy(),
+        embeddings,
         verbose=0
     )
 
