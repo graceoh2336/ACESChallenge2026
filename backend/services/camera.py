@@ -272,7 +272,26 @@ class CameraDetectionService:
     def _run(self) -> None:
         is_file_source = isinstance(self._source, str)
 
+        # A live webcam is naturally paced by its own hardware/driver — read()
+        # blocks until the next frame exists. A video file has no such limit:
+        # cv2 decodes as fast as the CPU allows, which is faster than the
+        # clip's own frame rate, so without pacing it here the file plays back
+        # sped up (and speeds up further under light CPU load). Pace file
+        # reads to the source's own FPS so playback matches the real clip.
+        frame_interval = None
+        if is_file_source:
+            source_fps = self._capture.get(cv2.CAP_PROP_FPS)
+            if source_fps and source_fps > 0:
+                frame_interval = 1.0 / source_fps
+        next_frame_due = time.monotonic()
+
         while not self._stop_event.is_set():
+            if frame_interval is not None:
+                sleep_for = next_frame_due - time.monotonic()
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+                next_frame_due += frame_interval
+
             ok, frame = self._capture.read()
 
             if not ok:
