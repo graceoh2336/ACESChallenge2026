@@ -3,9 +3,9 @@ import tensorflow as tf
 from sklearn.model_selection import GroupShuffleSplit
 
 #Load embeddings
-X = np.load("../dataSet/X.npy")
-y = np.load("../dataSet/y.npy")
-groups = np.load("../data/groups.npy")
+X = np.load("../dataset/X.npy")
+y = np.load("../dataset/y.npy")
+groups = np.load("../dataset/groups.npy")
 
 print("X:", X.shape)
 print("y:", y.shape)
