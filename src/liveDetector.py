@@ -2,7 +2,7 @@ import numpy as np
 import sounddevice as sd
 import tensorflow as tf
 from pathlib import Path
-from audio_utils import get_embeddings, SAMPLE_RATE
+from audioUtils import get_embeddings, SAMPLE_RATE
 
 WINDOW_SECONDS = 1.0 #Must be long enough for YAMNet (Around 0.96s minimum)
 HOP_SECONDS = 0.25
