@@ -25,6 +25,9 @@ from typing import Deque, List, Optional
 
 import cv2
 
+from services.vision_fusion import VehicleLightFusion, VisionResult, VisualState
+from services.yolo_detector import VehicleDetection
+
 # lights.py lives at the repo root and stays there, unmodified — the
 # detector algorithm must not be rewritten, only imported and adapted.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -129,6 +132,59 @@ def _build_debug_composite(frame, display, blue_mask, blue_change_mask):
     return cv2.vconcat([top, bottom])
 
 
+_STATE_DEBUG_COLOURS = {
+    VisualState.NO_VEHICLE: (128, 128, 128),
+    VisualState.VEHICLE_DETECTED: (0, 200, 0),
+    VisualState.POSSIBLE_EMERGENCY_VEHICLE: (0, 165, 255),
+    VisualState.EMERGENCY_VEHICLE_CONFIRMED: (0, 0, 255),
+}
+
+
+def _draw_vision_debug_overlay(display, vehicles: List[VehicleDetection], vision_result: VisionResult) -> None:
+    """OPENCV_DEBUG-only: draws every cached YOLO vehicle box (thin, yellow)
+    plus the fusion decision (thicker box in a state colour, and a text
+    breakdown) directly onto the detector's own annotated `display` image —
+    mutates it in place, same as lights.py's own drawing calls just above
+    this in the frame loop, so it all ends up in one composite tile rather
+    than a separate one."""
+    for vehicle in vehicles:
+        x, y, w, h = vehicle.bbox
+        cv2.rectangle(display, (x, y), (x + w, y + h), (0, 255, 255), 1)
+        cv2.putText(
+            display,
+            f"YOLO {vehicle.label}:{vehicle.confidence:.2f}",
+            (x, max(15, y - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            (0, 255, 255),
+            1,
+        )
+
+    colour = _STATE_DEBUG_COLOURS.get(vision_result.state, (255, 255, 255))
+    if vision_result.vehicle_bbox is not None:
+        x, y, w, h = vision_result.vehicle_bbox
+        cv2.rectangle(display, (x, y), (x + w, y + h), colour, 3)
+
+    lines = [
+        f"Vehicle: {vision_result.vehicle_label or 'none'} {vision_result.vehicle_confidence:.2f}",
+        f"Blue flash: {vision_result.light_confidence:.2f}",
+        f"ROI overlap: {vision_result.associated}",
+        f"Temporal confirmation: {vision_result.temporal_confirmation}",
+        f"Visual emergency confidence: {vision_result.confidence:.2f}",
+        f"State: {vision_result.state.value}",
+    ]
+    for i, line in enumerate(lines):
+        cv2.putText(
+            display,
+            line,
+            (20, 145 + i * 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            colour,
+            1,
+        )
+
+
 class CameraDetectionService:
     """Runs the OpenCV detector continuously against a VideoCapture on a
     background thread and hands out the latest CameraReading on demand.
@@ -142,6 +198,26 @@ class CameraDetectionService:
         self._source = _resolve_camera_source()
         self._detector = lights.VisualEmergencyDetector()
         self._capture: Optional[cv2.VideoCapture] = None
+
+        # YOLO vehicle-first pipeline (Phase 2/3). The model itself is loaded
+        # lazily in start() — never at import time — so a USE_YOLO=false run
+        # never pays torch/ultralytics' import cost. self._fusion holds the
+        # rolling vehicle+light association window; both it and self._detector
+        # get replaced with fresh instances on restart() (see _run's seek
+        # handling) so a demo restart starts every piece of temporal state
+        # from zero, not just the flash tracker.
+        self._yolo_detector = None
+        self._fusion: Optional[VehicleLightFusion] = (
+            VehicleLightFusion(
+                roi_padding=settings.yolo_roi_padding,
+                association_window=settings.yolo_association_window,
+                association_ratio_required=settings.yolo_association_ratio_required,
+            )
+            if settings.use_yolo
+            else None
+        )
+        self._latest_vehicles: List[VehicleDetection] = []
+        self._last_yolo_run: float = 0.0
 
         self._latest_reading = CameraReading(
             cameraDetected=False,
@@ -183,6 +259,9 @@ class CameraDetectionService:
         if self._thread is not None:
             return
 
+        if settings.use_yolo:
+            self._load_yolo_model()
+
         try:
             capture = self._open_working_capture()
         except Exception:
@@ -203,6 +282,33 @@ class CameraDetectionService:
         )
         self._thread.start()
         logger.info("Camera detection loop started (source=%r)", self._source)
+
+    def _load_yolo_model(self) -> None:
+        """Loads the shared YOLO model once, synchronously, before the frame
+        loop starts — never inside _run(), which would reload it on every
+        restart() and stall frame processing. A model that fails to load
+        (bad path, missing torch wheel, no network for the first auto-
+        download) disables the YOLO half of the pipeline for this run and
+        falls back to lights.py's raw output — same "never take the API
+        down" contract as the rest of this service.
+        """
+        from services.yolo_detector import get_shared_detector
+
+        try:
+            self._yolo_detector = get_shared_detector(
+                model_name=settings.yolo_model,
+                confidence_threshold=settings.yolo_confidence_threshold,
+                vehicle_classes=settings.yolo_vehicle_classes,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to load YOLO model (%s); falling back to the legacy "
+                "blue-light-only pipeline for this run. Set USE_YOLO=false to "
+                "silence this.",
+                settings.yolo_model,
+            )
+            self._yolo_detector = None
+            self._fusion = None
 
     def _open_working_capture(self) -> Optional[cv2.VideoCapture]:
         """Tries the configured source, then falls back to a demo video."""
@@ -320,6 +426,14 @@ class CameraDetectionService:
                 # a clean slate, not carry over confidence/flash-count state
                 # accumulated against the previous playback position.
                 self._detector = lights.VisualEmergencyDetector()
+                if self._fusion is not None:
+                    self._fusion = VehicleLightFusion(
+                        roi_padding=settings.yolo_roi_padding,
+                        association_window=settings.yolo_association_window,
+                        association_ratio_required=settings.yolo_association_ratio_required,
+                    )
+                self._latest_vehicles = []
+                self._last_yolo_run = 0.0
                 next_frame_due = time.monotonic()
                 self._seek_to_start_event.clear()
                 logger.info("Camera playback position reset to start")
@@ -348,7 +462,13 @@ class CameraDetectionService:
             frame = cv2.resize(frame, (lights.FRAME_WIDTH, lights.FRAME_HEIGHT))
 
             output_data, display, blue_mask, blue_change_mask = self._detector.process_frame(frame)
-            reading = self._to_camera_reading(output_data)
+
+            vision_result: Optional[VisionResult] = None
+            if self._yolo_detector is not None and self._fusion is not None:
+                vision_result = self._run_vehicle_first_pipeline(frame, output_data)
+                reading = self._to_camera_reading_from_vision(vision_result)
+            else:
+                reading = self._to_camera_reading(output_data)
 
             encoded_ok, jpeg_buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             frame_jpeg = jpeg_buffer.tobytes() if encoded_ok else None
@@ -358,7 +478,33 @@ class CameraDetectionService:
                 self._latest_frame_jpeg = frame_jpeg
 
             if settings.opencv_debug:
-                self._handle_debug(output_data, frame, display, blue_mask, blue_change_mask)
+                self._handle_debug(output_data, frame, display, blue_mask, blue_change_mask, vision_result)
+
+    def _run_vehicle_first_pipeline(self, frame, output_data: dict) -> VisionResult:
+        """Runs YOLO at its own (throttled) rate, caching detections between
+        runs, then feeds this frame's lights.py evidence + the current
+        vehicle cache through VehicleLightFusion. Called once per analyzed
+        video frame — the throttling happens *inside* here, not by skipping
+        calls to this method, so lights.py's own per-frame flash-timing
+        analysis (in self._detector, already run before this is called)
+        never gets skipped even when YOLO itself only runs every few frames.
+        """
+        now = time.monotonic()
+        yolo_interval = 1.0 / settings.yolo_inference_fps if settings.yolo_inference_fps > 0 else 0.0
+
+        if now - self._last_yolo_run >= yolo_interval:
+            self._latest_vehicles = self._yolo_detector.detect_vehicles(frame)
+            self._last_yolo_run = now
+
+        stale_after = yolo_interval * settings.yolo_stale_intervals
+        vehicles = self._latest_vehicles if (now - self._last_yolo_run) <= stale_after else []
+
+        return self._fusion.update(
+            light_state=output_data["visual_state"],
+            light_confidence=output_data["visual_confidence"],
+            light_bbox=output_data.get("best_bbox"),
+            vehicles=vehicles,
+        )
 
     @staticmethod
     def _to_camera_reading(output_data: dict) -> CameraReading:
@@ -396,7 +542,48 @@ class CameraDetectionService:
             frameHeight=lights.FRAME_HEIGHT,
         )
 
-    def _handle_debug(self, output_data: dict, frame, display, blue_mask, blue_change_mask) -> None:
+    def _to_camera_reading_from_vision(self, vision_result: VisionResult) -> CameraReading:
+        """Vehicle-first counterpart to _to_camera_reading (Phase 5/6): only
+        VisualState.EMERGENCY_VEHICLE_CONFIRMED sets cameraDetected — the
+        same single "is this worth alerting on" boolean lights.py's own
+        "detected" state used to gate, so services/fusion.py's audio+camera
+        policy needs no changes. The dashboard's box is always the YOLO
+        vehicle box (never the small light blob) once confirmed.
+        """
+        detected = vision_result.state == VisualState.EMERGENCY_VEHICLE_CONFIRMED
+
+        direction = None
+        if vision_result.display_bbox is not None:
+            x, y, w, h = vision_result.display_bbox
+            centre_x = x + w / 2.0
+            direction = _POSITION_TO_DIRECTION.get(
+                self._detector.get_position_label(centre_x, lights.FRAME_WIDTH)
+            )
+
+        bounding_box = (
+            BoundingBox(
+                x=int(vision_result.vehicle_bbox[0]),
+                y=int(vision_result.vehicle_bbox[1]),
+                width=int(vision_result.vehicle_bbox[2]),
+                height=int(vision_result.vehicle_bbox[3]),
+            )
+            if detected and vision_result.vehicle_bbox
+            else None
+        )
+
+        return CameraReading(
+            cameraDetected=detected,
+            vehicleConfidence=vision_result.confidence,
+            vehicleType=VehicleType.UNKNOWN,
+            direction=direction,
+            boundingBox=bounding_box,
+            frameWidth=lights.FRAME_WIDTH,
+            frameHeight=lights.FRAME_HEIGHT,
+        )
+
+    def _handle_debug(
+        self, output_data: dict, frame, display, blue_mask, blue_change_mask, vision_result: Optional[VisionResult] = None
+    ) -> None:
         """OPENCV_DEBUG-only side channel — never touches _latest_reading.
 
         Always refreshes the live 4-way composite (so /debug-stream stays a
@@ -407,11 +594,28 @@ class CameraDetectionService:
         candidates too), because the point of this mode is to see everything
         the tracker considered, not just what survived its own filtering.
         """
+        if vision_result is not None:
+            _draw_vision_debug_overlay(display, self._latest_vehicles, vision_result)
+
         composite = _build_debug_composite(frame, display, blue_mask, blue_change_mask)
         encoded_ok, buffer = cv2.imencode(".jpg", composite, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
 
         with self._lock:
             self._latest_debug_frame_jpeg = buffer.tobytes() if encoded_ok else None
+
+        if vision_result is not None and (vision_result.vehicle_bbox is not None or output_data.get("best_bbox")):
+            logger.info(
+                "VISION frame=%d state=%s vehicle=%s(%.2f) light=%.2f associated=%s "
+                "temporal=%s confidence=%.3f",
+                output_data["frame_index"],
+                vision_result.state.value,
+                vision_result.vehicle_label,
+                vision_result.vehicle_confidence,
+                vision_result.light_confidence,
+                vision_result.associated,
+                vision_result.temporal_confirmation,
+                vision_result.confidence,
+            )
 
         bbox = output_data.get("best_bbox")
         if bbox is None:

@@ -14,8 +14,8 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
-def _parse_origins(raw: str) -> List[str]:
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+def _parse_csv(raw: str) -> List[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 def _parse_bool(raw: str) -> bool:
@@ -86,10 +86,104 @@ class Settings:
     )
 
     cors_origins: List[str] = field(
-        default_factory=lambda: _parse_origins(
+        default_factory=lambda: _parse_csv(
             os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
         )
     )
+
+    # --- YOLO vehicle-first vision pipeline -------------------------------
+    # When true, services/camera.py runs Ultralytics YOLO vehicle detection
+    # alongside lights.py's blue-light detector and only trusts flashing-light
+    # evidence that's spatially associated with a detected vehicle (see
+    # services/yolo_detector.py and services/vision_fusion.py). When false,
+    # the system behaves exactly as it did before this upgrade: lights.py's
+    # raw blue/flashing-blob output drives CameraReading directly. This is
+    # the safe rollback switch — flip to false to restore the pre-YOLO
+    # pipeline with no other changes needed.
+    use_yolo: bool = _parse_bool(os.getenv("USE_YOLO", "true"))
+
+    # Ultralytics model name/path. A bare name (e.g. "yolo11n.pt") is
+    # resolved under backend/.cache/yolo/ and auto-downloaded there on first
+    # use (mirrors how AUDIO's YAMNet model is cached under
+    # backend/.tfhub_cache/) — never littered into the repo root or whatever
+    # directory the process happened to be launched from. An absolute path,
+    # or one that already exists relative to the repo root/backend dir, is
+    # used as-is. "n" (nano) is the smallest/fastest variant in the YOLO11
+    # family and the one meant for eventual Raspberry Pi 5 deployment.
+    yolo_model: str = os.getenv("YOLO_MODEL", "yolo11n.pt")
+
+    # Minimum YOLO detection confidence before a box counts as a vehicle.
+    # Measured against this project's own demo footage (see the ACES
+    # report): daytime footage (video2.mp4, video3.mp4) clears 0.5-0.85 for
+    # real cars, comfortably above any reasonable bar. The close-range night
+    # Garda car in video.mp4 is a much harder case for a pretrained COCO
+    # model — extreme blue lens-flare bloom and full-frame overexposure push
+    # its own "car" confidence down to 0.15-0.45 even though the same box
+    # position is picked up consistently frame after frame. 0.45 (the
+    # initially-planned default) missed that vehicle almost entirely; 0.25
+    # catches it reliably while still sitting well below daytime cars'
+    # typical confidence, so it doesn't meaningfully add noise there — a
+    # low-confidence vehicle box alone still can't trigger an emergency
+    # detection without associated flashing-light evidence (see
+    # services/vision_fusion.py), so the risk of lowering this is small.
+    yolo_confidence_threshold: float = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.25"))
+
+    # How often (times per second) YOLO actually runs inference. Running it
+    # on every frame is unnecessary — vehicles don't move fast enough
+    # relative to the frame rate to need it, and it would compete with
+    # lights.py's own per-frame flash-timing analysis for CPU. Detections are
+    # cached between runs (see services/camera.py) so every frame still has
+    # a vehicle ROI to test light evidence against.
+    # 15, not the originally-planned 5: measured on video.mp4 (the hardest
+    # demo clip — see yolo_confidence_threshold's comment), YOLO's own "car"
+    # confidence for the real vehicle flickers above and below the
+    # acceptance threshold frame to frame under heavy lens flare, so a
+    # sparser inference rate leaves the vehicle cache stale (and therefore
+    # "no vehicle") right when a light-association check needs it most. An
+    # offline sweep (8/15/20 Hz, plus an every-frame upper bound) against all
+    # three demo clips found 15Hz recovers most of that gap on the hard clip
+    # with zero measurable difference on the two easier ones, and it's still
+    # cheap: this model runs ~25-27ms/frame on an M-series CPU, so 15Hz costs
+    # well under 40% of one core on the desktop this was built and demoed
+    # on. Lower this substantially for Raspberry Pi 5 (see the ACES report's
+    # Raspberry Pi section) — that CPU won't sustain 15Hz.
+    yolo_inference_fps: float = float(os.getenv("YOLO_INFERENCE_FPS", "15"))
+
+    # COCO classes (Ultralytics' pretrained vocabulary) treated as "vehicle"
+    # for the purposes of this pipeline. Comma-separated; anything else YOLO
+    # detects (person, traffic light, stop sign, ...) is ignored outright.
+    yolo_vehicle_classes: List[str] = field(
+        default_factory=lambda: _parse_csv(os.getenv("YOLO_VEHICLE_CLASSES", "car,truck,bus,motorcycle"))
+    )
+
+    # Fractional padding added around a YOLO vehicle box (relative to that
+    # box's own width/height) before testing whether a flashing-light
+    # candidate from lights.py falls inside it — a roof-mounted lightbar or
+    # grille light often sits just outside the tight vehicle box YOLO draws,
+    # so a small ROI margin catches those without accepting evidence that's
+    # actually off the vehicle entirely.
+    yolo_roi_padding: float = float(os.getenv("YOLO_ROI_PADDING", "0.15"))
+
+    # How many frames a cached YOLO detection remains valid for before being
+    # treated as stale (vehicle presumed gone) if no newer YOLO run has
+    # confirmed it. Expressed as a multiple of the YOLO inference interval
+    # (1 / yolo_inference_fps) rather than a fixed second count, so it scales
+    # sensibly if the inference rate is changed.
+    yolo_stale_intervals: float = float(os.getenv("YOLO_STALE_INTERVALS", "4"))
+
+    # Rolling window (in main detection-loop frames, i.e. lights.py's own
+    # frame rate — not YOLO's) used to judge whether vehicle+light
+    # association is a stable, repeated pattern rather than one-frame noise
+    # (Phase 4 temporal stability). Deliberately separate from lights.py's
+    # own confirmed_flash_count bookkeeping — this only tracks *whether the
+    # flashing light kept overlapping the same vehicle region*, not whether
+    # the flash pattern itself looks genuine (lights.py already owns that).
+    yolo_association_window: int = int(os.getenv("YOLO_ASSOCIATION_WINDOW", "15"))
+
+    # Fraction of the association window that must show vehicle+light
+    # overlap before the combined visual state is allowed to reach
+    # "confirmed" (as opposed to the weaker "possible").
+    yolo_association_ratio_required: float = float(os.getenv("YOLO_ASSOCIATION_RATIO_REQUIRED", "0.45"))
 
 
 settings = Settings()
