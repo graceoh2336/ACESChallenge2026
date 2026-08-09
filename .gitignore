@@ -7,3 +7,4 @@ __pycache__/
 dist/
 backend/debug_output/
 backend/.tfhub_cache/
+backend/.cache/

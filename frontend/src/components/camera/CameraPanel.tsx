@@ -1,19 +1,15 @@
 import { Video, Compass } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import { PanelHeader } from '../dashboard/PanelHeader'
 import { ConfidenceBar } from '../dashboard/ConfidenceBar'
 import { CameraFeedPlaceholder } from './CameraFeedPlaceholder'
 import { CameraIndicator } from './CameraIndicator'
 import { BoundingBoxOverlay } from './BoundingBoxOverlay'
+import { DemoStartOverlay } from './DemoStartOverlay'
+import { DemoVideoControls } from './DemoVideoControls'
 import { DevCameraReadout } from './DevCameraReadout'
+import { useDemoVideoPlayer, DEMO_VIDEO_URL } from '../../hooks/useDemoVideoPlayer'
 import { formatVehicleLabel } from '../../utils/formatters'
 import type { DetectionState } from '../../types'
-
-// Fallback only — the real URL should come from VITE_CAMERA_STREAM_URL.
-const DEFAULT_CAMERA_STREAM_URL = 'http://localhost:8000/api/camera/stream'
-const CAMERA_STREAM_URL = import.meta.env.VITE_CAMERA_STREAM_URL ?? DEFAULT_CAMERA_STREAM_URL
-
-const STREAM_RETRY_MS = 5000
 
 interface CameraPanelProps {
   detection: DetectionState
@@ -26,22 +22,10 @@ interface CameraPanelProps {
 export function CameraPanel({ detection, isMock, rawMessage }: CameraPanelProps) {
   const { cameraDetected, vehicleConfidence, vehicleType, boundingBox, direction } = detection
 
-  // MJPEG <img> streams don't retry on their own once they error (e.g. the
-  // backend restarting) — this bumps a cache-busting key on a timer so the
-  // element remounts and tries the connection again instead of staying dark.
-  const [streamFailed, setStreamFailed] = useState(false)
-  const [retryToken, setRetryToken] = useState(0)
+  const { videoRef, hasStarted, isPlaying, isMuted, volume, start, togglePlay, restart, toggleMute, setVolume } =
+    useDemoVideoPlayer()
 
-  useEffect(() => {
-    if (!streamFailed) return
-    const id = window.setTimeout(() => {
-      setStreamFailed(false)
-      setRetryToken((token) => token + 1)
-    }, STREAM_RETRY_MS)
-    return () => window.clearTimeout(id)
-  }, [streamFailed])
-
-  const showLiveStream = !isMock && !streamFailed
+  const showDemoVideo = !isMock
 
   return (
     <section className="glass-panel flex h-full flex-col overflow-hidden rounded-2xl">
@@ -58,18 +42,21 @@ export function CameraPanel({ detection, isMock, rawMessage }: CameraPanelProps)
       />
 
       <div className="relative min-h-[280px] flex-1">
-        {showLiveStream ? (
-          <img
-            key={retryToken}
-            src={`${CAMERA_STREAM_URL}?retry=${retryToken}`}
-            alt="Live camera feed"
-            // object-fill (not object-cover): the bounding-box overlay's
-            // percentages are computed against the *full* source frame, so
-            // any cropping here would desync the box from what's on screen —
-            // filling stretches instead of cropping, keeping the mapping 1:1.
-            className="absolute inset-0 h-full w-full object-fill"
-            onError={() => setStreamFailed(true)}
-          />
+        {showDemoVideo ? (
+          <>
+            <video
+              ref={videoRef}
+              src={DEMO_VIDEO_URL}
+              loop
+              playsInline
+              // object-fill (not object-cover): the bounding-box overlay's
+              // percentages are computed against the *full* source frame, so
+              // any cropping here would desync the box from what's on screen —
+              // filling stretches instead of cropping, keeping the mapping 1:1.
+              className="absolute inset-0 h-full w-full object-fill"
+            />
+            <DemoStartOverlay visible={!hasStarted} onStart={start} />
+          </>
         ) : (
           <CameraFeedPlaceholder />
         )}
@@ -97,19 +84,32 @@ export function CameraPanel({ detection, isMock, rawMessage }: CameraPanelProps)
           cameraDetected={cameraDetected}
         />
 
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 bg-gradient-to-t from-cockpit-950/90 to-transparent p-4">
-          <div className="leading-tight">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-cockpit-300">Vehicle Label</p>
-            <p className="font-display text-xl font-semibold text-cockpit-100">
-              {formatVehicleLabel(vehicleType, cameraDetected)}
-            </p>
-          </div>
-          <div className="w-40">
-            <ConfidenceBar
-              label="AI Confidence"
-              value={vehicleConfidence}
-              tone={vehicleConfidence > 0.75 ? 'red' : vehicleConfidence > 0.4 ? 'amber' : 'green'}
+        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2.5 bg-gradient-to-t from-cockpit-950/90 to-transparent p-4">
+          {showDemoVideo && (
+            <DemoVideoControls
+              isPlaying={isPlaying}
+              isMuted={isMuted}
+              volume={volume}
+              onTogglePlay={togglePlay}
+              onRestart={restart}
+              onToggleMute={toggleMute}
+              onVolumeChange={setVolume}
             />
+          )}
+          <div className="flex items-end justify-between gap-4">
+            <div className="leading-tight">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-cockpit-300">Vehicle Label</p>
+              <p className="font-display text-xl font-semibold text-cockpit-100">
+                {formatVehicleLabel(vehicleType, cameraDetected)}
+              </p>
+            </div>
+            <div className="w-40">
+              <ConfidenceBar
+                label="AI Confidence"
+                value={vehicleConfidence}
+                tone={vehicleConfidence > 0.75 ? 'red' : vehicleConfidence > 0.4 ? 'amber' : 'green'}
+              />
+            </div>
           </div>
         </div>
       </div>

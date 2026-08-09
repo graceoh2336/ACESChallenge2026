@@ -38,8 +38,10 @@ class Settings:
     camera_detection_probability: float = float(os.getenv("CAMERA_DETECTION_PROBABILITY", "0.5"))
 
     # "0" (or another integer) for a live webcam index, or a video file path
-    # (e.g. "demo.mp4") to loop a recorded clip through the detector.
-    camera_source: str = os.getenv("CAMERA_SOURCE", "0")
+    # (e.g. "demo/video.mp4") to loop a recorded clip through the detector.
+    # Defaults to the bundled demo clip, which also supplies YAMNet's audio
+    # (see audio_source below) — one file, one source of truth for both.
+    camera_source: str = os.getenv("CAMERA_SOURCE", "demo/video.mp4")
 
     # When the configured camera_source can't be opened and a demo video
     # exists under backend/demo/, automatically switch to it instead of just
@@ -60,11 +62,12 @@ class Settings:
     # was wired up.
     use_real_tensorflow: bool = _parse_bool(os.getenv("USE_REAL_TENSORFLOW", "true"))
 
-    # "mic" (or "live") for live microphone capture via sounddevice, or a WAV
-    # file path (e.g. "demo/siren.wav") to loop through the model instead.
-    # Resolved the same way as CAMERA_SOURCE: relative to the repo root or
-    # backend/, or passed through unchanged.
-    audio_source: str = os.getenv("AUDIO_SOURCE", "demo/siren.wav")
+    # "video" (the default) extracts and loops the audio track baked into
+    # CAMERA_SOURCE's own video file — no separate WAV to maintain. "mic" (or
+    # "live") switches to live microphone capture via sounddevice instead
+    # (Raspberry Pi deployment). Any other value is treated as a WAV/audio
+    # file path, resolved the same way as CAMERA_SOURCE.
+    audio_source: str = os.getenv("AUDIO_SOURCE", "video")
 
     # YAMNet only accepts 16kHz mono audio; any other source sample rate is
     # resampled to this before inference.

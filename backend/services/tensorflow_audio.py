@@ -30,8 +30,10 @@ vehicle types rather than emitting one generic label everywhere.
 """
 
 import csv
+import hashlib
 import logging
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -75,7 +77,17 @@ _LIVE_WINDOW_SECONDS = 1.0
 _LIVE_HOP_SECONDS = 0.25
 
 _LIVE_SOURCE_KEYWORDS = {"mic", "live", "microphone"}
-_DEMO_DIR = _BACKEND_DIR / "demo"
+
+# AUDIO_SOURCE values that mean "derive the audio from CAMERA_SOURCE's video
+# file" instead of pointing at a separate audio file — the default, so the
+# demo video's own baked-in siren audio is the single source of truth for
+# both OpenCV and YAMNet (see _extract_audio_from_video below).
+_VIDEO_DERIVED_KEYWORDS = {"video", "camera", "auto", "demo", ""}
+
+# Extracted-audio cache: gitignored (backend/.cache/), keyed on the source
+# video's name/mtime/size so a changed video.mp4 re-extracts automatically
+# but repeated process restarts against the same file don't.
+_AUDIO_EXTRACT_CACHE_DIR = _BACKEND_DIR / ".cache" / "audio_extract"
 
 # AudioSet classes YAMNet was trained on that map onto a specific emergency
 # vehicle type.
@@ -223,6 +235,82 @@ def _resolve_audio_path(raw: str) -> Optional[Path]:
     return None
 
 
+def _resolve_video_path(raw_camera_source: str) -> Optional[Path]:
+    """Resolves CAMERA_SOURCE to a file path the way services/camera.py's
+    own resolver does, except a numeric webcam index has no extractable
+    audio track and resolves to None here (live-mic mode should be used for
+    that case instead)."""
+    raw = raw_camera_source.strip()
+    if raw.isdigit():
+        return None
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        return candidate if candidate.is_file() else None
+    for base in (_REPO_ROOT, _BACKEND_DIR):
+        resolved = base / raw
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def _extract_audio_from_video(video_path: Path, sample_rate: int) -> Optional[Path]:
+    """Extracts the video's audio track to a 16kHz mono WAV once, via a
+    bundled ffmpeg binary (imageio-ffmpeg — no system ffmpeg install
+    required), and caches it so subsequent process starts against the same
+    file reuse it instead of re-decoding the MP4."""
+    try:
+        stat = video_path.stat()
+        cache_key = f"{video_path.resolve()}|{stat.st_mtime_ns}|{stat.st_size}|{sample_rate}"
+        digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
+        output_path = _AUDIO_EXTRACT_CACHE_DIR / f"{video_path.stem}_{digest}.wav"
+
+        if output_path.is_file():
+            logger.info("Reusing cached extracted audio: %s", output_path)
+            return output_path
+
+        import imageio_ffmpeg
+
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+        _AUDIO_EXTRACT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        # Drop stale extractions of this same video (old hash) so the cache
+        # directory doesn't grow unbounded across repeated edits of video.mp4.
+        for stale in _AUDIO_EXTRACT_CACHE_DIR.glob(f"{video_path.stem}_*.wav"):
+            stale.unlink(missing_ok=True)
+
+        logger.info("Extracting audio track from %s (once, cached at %s)...", video_path, output_path)
+        result = subprocess.run(
+            [
+                ffmpeg_exe,
+                "-y",
+                "-i",
+                str(video_path),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                str(sample_rate),
+                "-f",
+                "wav",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            logger.error(
+                "ffmpeg audio extraction failed (code=%d): %s", result.returncode, result.stderr[-2000:]
+            )
+            output_path.unlink(missing_ok=True)
+            return None
+
+        return output_path
+    except Exception:
+        logger.exception("Failed to extract audio track from %s; audio detection disabled", video_path)
+        return None
+
+
 class TensorFlowAudioDetectionService:
     """Runs YAMNet continuously against a WAV file (looped) or live
     microphone input on a background thread; hands out the latest
@@ -255,6 +343,11 @@ class TensorFlowAudioDetectionService:
 
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
+        # Set by restart() (see routes/demo.py's POST /api/demo/start) to
+        # request that the run loop reset playback to the beginning on its
+        # next iteration — used to resync YAMNet's position with a fresh
+        # browser video playback and services/camera.py's own restart().
+        self._seek_to_start_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
@@ -278,10 +371,12 @@ class TensorFlowAudioDetectionService:
         mode, target = self._resolve_mode()
         if mode is None:
             logger.warning(
-                "Audio detection disabled — no working audio source (AUDIO_SOURCE=%r). "
-                "Set AUDIO_SOURCE to a WAV file under backend/demo/, or 'mic' for a live "
-                "microphone.",
+                "Audio detection disabled — no working audio source (AUDIO_SOURCE=%r, "
+                "CAMERA_SOURCE=%r). AUDIO_SOURCE='video' (the default) extracts audio from "
+                "CAMERA_SOURCE's file; set AUDIO_SOURCE to a WAV file path directly, or 'mic' "
+                "for a live microphone.",
                 self._source,
+                settings.camera_source,
             )
             self._maybe_start_fallback()
             return
@@ -305,6 +400,13 @@ class TensorFlowAudioDetectionService:
             self._thread = None
         logger.info("Audio detection stopped")
 
+    def restart(self) -> None:
+        """Requests the run loop reset playback to the beginning of the
+        audio (file mode: back to sample 0; live mode: clear the rolling
+        buffer) on its next iteration. No-op if using the simulated
+        fallback, which has no playback position to reset."""
+        self._seek_to_start_event.set()
+
     def generate_reading(self) -> AudioReading:
         if self._using_fallback and self._fallback_service is not None:
             return self._fallback_service.generate_reading()
@@ -313,8 +415,17 @@ class TensorFlowAudioDetectionService:
 
     def _resolve_mode(self) -> Tuple[Optional[str], Optional[Path]]:
         raw = self._source.strip()
-        if raw.lower() in _LIVE_SOURCE_KEYWORDS:
+        lowered = raw.lower()
+
+        if lowered in _LIVE_SOURCE_KEYWORDS:
             return "live", None
+
+        if lowered in _VIDEO_DERIVED_KEYWORDS:
+            video_path = _resolve_video_path(settings.camera_source)
+            if video_path is None:
+                return None, None
+            extracted = _extract_audio_from_video(video_path, self._sample_rate)
+            return ("file", extracted) if extracted is not None else (None, None)
 
         path = _resolve_audio_path(raw)
         if path is not None:
@@ -355,6 +466,12 @@ class TensorFlowAudioDetectionService:
         next_due = time.monotonic()
 
         while not self._stop_event.is_set():
+            if self._seek_to_start_event.is_set():
+                position = 0
+                next_due = time.monotonic()
+                self._seek_to_start_event.clear()
+                logger.info("Audio playback position reset to start")
+
             end = position + window_samples
             if end <= total_samples:
                 chunk = waveform[position:end]
@@ -371,13 +488,16 @@ class TensorFlowAudioDetectionService:
             except Exception:
                 logger.exception("YAMNet inference failed on a window; skipping")
 
-            # Pace to roughly real-time so a demo WAV and a demo video
-            # started together stay reasonably in sync — not frame-accurate,
-            # just not racing ahead at CPU speed.
+            # Pace to roughly real-time so the demo video and its extracted
+            # audio, started together, stay reasonably in sync — not
+            # frame-accurate, just not racing ahead at CPU speed. Waiting on
+            # the seek event (rather than time.sleep) means a restart()
+            # during this pause is picked up immediately instead of at most
+            # one window late.
             next_due += _FILE_WINDOW_SECONDS
             sleep_for = next_due - time.monotonic()
             if sleep_for > 0:
-                time.sleep(sleep_for)
+                self._seek_to_start_event.wait(timeout=sleep_for)
             else:
                 next_due = time.monotonic()
 
@@ -399,6 +519,11 @@ class TensorFlowAudioDetectionService:
 
         try:
             while not self._stop_event.is_set():
+                if self._seek_to_start_event.is_set():
+                    buffer = np.zeros(window_samples, dtype=np.float32)
+                    self._seek_to_start_event.clear()
+                    logger.info("Audio playback buffer reset for new demo session")
+
                 chunk = sd.rec(hop_samples, samplerate=self._sample_rate, channels=1, dtype="float32")
                 sd.wait()
                 buffer = np.concatenate([buffer[hop_samples:], chunk.flatten()])

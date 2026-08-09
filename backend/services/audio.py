@@ -24,6 +24,9 @@ class AudioDetectionService:
     def stop(self) -> None:
         """No-op — see start()."""
 
+    def restart(self) -> None:
+        """No-op — a random simulation has no playback position to reset."""
+
     def generate_reading(self) -> AudioReading:
         detected = random.random() < self._detection_probability
 

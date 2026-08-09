@@ -165,6 +165,12 @@ class CameraDetectionService:
 
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
+        # Set by restart() (see routes/demo.py's POST /api/demo/start) to
+        # request the frame loop seek back to frame 0 and start a fresh
+        # detection session on its next iteration — used to resync video
+        # playback with a fresh browser video start and the audio service's
+        # own restart().
+        self._seek_to_start_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
@@ -251,6 +257,12 @@ class CameraDetectionService:
             self._capture = None
         logger.info("Camera released")
 
+    def restart(self) -> None:
+        """Requests the frame loop seek back to frame 0 (video file sources
+        only — a no-op on a live webcam, which has no meaningful "position"
+        to rewind) and start tracking fresh on its next iteration."""
+        self._seek_to_start_event.set()
+
     def generate_reading(self) -> CameraReading:
         """Returns the latest reading produced by the background frame loop.
 
@@ -259,6 +271,17 @@ class CameraDetectionService:
         """
         with self._lock:
             return self._latest_reading
+
+    @property
+    def source_path(self) -> Optional[Path]:
+        """The video file this service is actually reading frames from right
+        now, or None for a live webcam (an int index — no file to serve).
+        Reflects CAMERA_SOURCE, or wherever _open_working_capture fell back
+        to if the configured source couldn't be opened — the single source
+        of truth routes/demo.py's GET /api/demo/video serves to the browser,
+        so what's displayed always matches what's actually being analyzed.
+        """
+        return Path(self._source) if isinstance(self._source, str) else None
 
     def get_latest_frame_jpeg(self) -> Optional[bytes]:
         """Returns the most recent plain (unannotated) frame as JPEG bytes,
@@ -290,6 +313,17 @@ class CameraDetectionService:
         next_frame_due = time.monotonic()
 
         while not self._stop_event.is_set():
+            if self._seek_to_start_event.is_set():
+                if is_file_source:
+                    self._capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                # Fresh detector: a demo restart should start tracking from
+                # a clean slate, not carry over confidence/flash-count state
+                # accumulated against the previous playback position.
+                self._detector = lights.VisualEmergencyDetector()
+                next_frame_due = time.monotonic()
+                self._seek_to_start_event.clear()
+                logger.info("Camera playback position reset to start")
+
             if frame_interval is not None:
                 sleep_for = next_frame_due - time.monotonic()
                 if sleep_for > 0:
