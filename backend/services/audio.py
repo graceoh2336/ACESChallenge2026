@@ -17,6 +17,13 @@ class AudioDetectionService:
     def __init__(self, detection_probability: float = 0.55):
         self._detection_probability = detection_probability
 
+    def start(self) -> None:
+        """No-op — kept so main.py's lifespan can start/stop whichever audio
+        service is active (real or simulated) without branching."""
+
+    def stop(self) -> None:
+        """No-op — see start()."""
+
     def generate_reading(self) -> AudioReading:
         detected = random.random() < self._detection_probability
 

@@ -42,6 +42,10 @@ pytz==2026.3.post1
 requests==2.32.5
 rich==15.0.0
 six==1.17.0
+# Only needed for live microphone input (AUDIO_SOURCE=mic), e.g. Raspberry
+# Pi deployment. Not required for file/demo mode. Depends on the system
+# PortAudio library being available.
+sounddevice==0.5.1
 starlette==0.49.3
 tensorboard==2.20.0
 tensorboard-data-server==0.7.2

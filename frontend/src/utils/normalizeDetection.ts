@@ -7,7 +7,14 @@ import type {
   VehicleType,
 } from '../types'
 
-const VALID_SIREN_TYPES: readonly SirenType[] = ['Ambulance', 'Police', 'Fire Truck', 'Air Horn', 'None']
+const VALID_SIREN_TYPES: readonly SirenType[] = [
+  'Ambulance',
+  'Police',
+  'Fire Truck',
+  'Air Horn',
+  'Emergency Siren',
+  'None',
+]
 
 const VALID_DIRECTIONS: readonly Direction[] = [
   'Front',

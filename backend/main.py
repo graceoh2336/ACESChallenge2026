@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from routes import api_router
-from websocket import broadcaster, camera_service, detection_websocket_endpoint
+from websocket import audio_service, broadcaster, camera_service, detection_websocket_endpoint
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,9 +23,11 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     camera_service.start()
+    audio_service.start()
     broadcaster.start()
     yield
     await broadcaster.stop()
+    audio_service.stop()
     camera_service.stop()
 
 

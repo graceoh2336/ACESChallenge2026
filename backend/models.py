@@ -10,6 +10,10 @@ class SirenType(str, Enum):
     AMBULANCE = "Ambulance"
     FIRE_TRUCK = "Fire Truck"
     POLICE = "Police"
+    # YAMNet recognizes a siren is present (AudioSet classes "Siren",
+    # "Civil defense siren", "Emergency vehicle") without being able to tell
+    # which kind of vehicle it belongs to — this is that generic case.
+    SIREN = "Emergency Siren"
     NONE = "None"
 
 

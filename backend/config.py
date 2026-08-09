@@ -54,6 +54,34 @@ class Settings:
     # accuracy, not for normal operation.
     opencv_debug: bool = _parse_bool(os.getenv("OPENCV_DEBUG", "false"))
 
+    # When true, audio detection is real YAMNet/TensorFlow inference
+    # (services/tensorflow_audio.py). When false, falls back to the random
+    # simulated service (services/audio.py) — same behaviour as before this
+    # was wired up.
+    use_real_tensorflow: bool = _parse_bool(os.getenv("USE_REAL_TENSORFLOW", "true"))
+
+    # "mic" (or "live") for live microphone capture via sounddevice, or a WAV
+    # file path (e.g. "demo/siren.wav") to loop through the model instead.
+    # Resolved the same way as CAMERA_SOURCE: relative to the repo root or
+    # backend/, or passed through unchanged.
+    audio_source: str = os.getenv("AUDIO_SOURCE", "demo/siren.wav")
+
+    # YAMNet only accepts 16kHz mono audio; any other source sample rate is
+    # resampled to this before inference.
+    audio_sample_rate: int = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
+
+    # Minimum YAMNet class score before a window counts as a detection.
+    audio_confidence_threshold: float = float(os.getenv("AUDIO_CONFIDENCE_THRESHOLD", "0.65"))
+
+    # When the real TensorFlow audio service can't start (model failed to
+    # load, no working audio source) and this is true, it falls back to the
+    # random simulated readings instead of just reporting "no detection".
+    # Off by default — a real "live" sensor silently turning into a random
+    # number generator is a surprising and misleading failure mode.
+    audio_allow_simulation_fallback: bool = _parse_bool(
+        os.getenv("AUDIO_ALLOW_SIMULATION_FALLBACK", "false")
+    )
+
     cors_origins: List[str] = field(
         default_factory=lambda: _parse_origins(
             os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")

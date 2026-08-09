@@ -2,7 +2,7 @@ export type AlertLevel = 'Monitoring' | 'Possible' | 'Confirmed' | 'Critical'
 
 export type VehicleType = 'Ambulance' | 'Police' | 'Fire Truck' | 'None'
 
-export type SirenType = 'Ambulance' | 'Police' | 'Fire Truck' | 'Air Horn' | 'None'
+export type SirenType = 'Ambulance' | 'Police' | 'Fire Truck' | 'Air Horn' | 'Emergency Siren' | 'None'
 
 export type Direction =
   | 'Front'

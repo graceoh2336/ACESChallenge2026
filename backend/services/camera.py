@@ -35,10 +35,14 @@ if str(_REPO_ROOT) not in sys.path:
 
 import lights  # noqa: E402  (sys.path must be patched before this import)
 
-# The real audio service is a random simulation, not a live siren detector,
-# so boosting visual sensitivity off it would be misleading. `lights.py`
-# exposes this as a public module-level tunable for exactly this kind of
-# external override — live_camera.py does the same thing to bestattempt.py.
+# Safe default at import time. The simulated audio service (services/audio.py)
+# is a random coin flip, not a live siren detector, so it deliberately never
+# touches this. When real TensorFlow/YAMNet audio detection is enabled
+# (services/tensorflow_audio.py, USE_REAL_TENSORFLOW=true), its background
+# loop overwrites this continuously with genuine detection results.
+# `lights.py` exposes this as a public module-level tunable for exactly this
+# kind of external override — live_camera.py does the same thing to
+# bestattempt.py.
 lights.AUDIO_SIREN_DETECTED = False
 
 from config import settings  # noqa: E402

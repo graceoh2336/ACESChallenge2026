@@ -6,3 +6,4 @@ __pycache__/
 .DS_Store
 dist/
 backend/debug_output/
+backend/.tfhub_cache/

@@ -21,6 +21,24 @@ from services.fusion import FusionService
 logger = logging.getLogger(__name__)
 
 
+def _build_audio_service():
+    """Real YAMNet/TensorFlow inference when enabled, otherwise the random
+    simulation. Both expose start()/generate_reading()/stop(), so callers
+    (FusionService, this module's lifespan wiring) don't need to know which
+    one they got. The heavy TensorFlow import only happens in the real case.
+    """
+    if not settings.use_real_tensorflow:
+        return AudioDetectionService(settings.audio_detection_probability)
+
+    from services.tensorflow_audio import TensorFlowAudioDetectionService
+
+    return TensorFlowAudioDetectionService(
+        source=settings.audio_source,
+        sample_rate=settings.audio_sample_rate,
+        confidence_threshold=settings.audio_confidence_threshold,
+    )
+
+
 class ConnectionManager:
     """Tracks active WebSocket clients and broadcasts messages to all of them."""
 
@@ -104,9 +122,10 @@ class DetectionBroadcaster:
 manager = ConnectionManager()
 
 camera_service = CameraDetectionService(settings.camera_detection_probability)
+audio_service = _build_audio_service()
 
 fusion_service = FusionService(
-    audio_service=AudioDetectionService(settings.audio_detection_probability),
+    audio_service=audio_service,
     camera_service=camera_service,
 )
 
